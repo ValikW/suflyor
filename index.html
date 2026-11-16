@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Суфлёр">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<title>Суфлёр</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden; touch-action: none;
+    font-family: -apple-system, system-ui, sans-serif; }
+
+  video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  #box { position: fixed; left: 30px; top: 60px; width: 340px; height: 220px; border-radius: 16px;
+    background: rgba(0,0,0,.55); overflow: hidden; z-index: 3; }
+  #text { position: absolute; left: 12px; right: 12px; top: 0; font-weight: 600; line-height: 1.25;
+    white-space: pre-wrap; will-change: transform; }
+  #size { position: absolute; right: 4px; bottom: 4px; width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,.25); display: grid; place-items: center; font-size: 18px; }
+
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; padding: 14px 24px calc(20px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, rgba(0,0,0,.6)); display: grid; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+  .row span { width: 70px; }
+  .row input { flex: 1; accent-color: #0a84ff; }
+  .btns { display: flex; justify-content: space-between; align-items: center; }
+  .round { width: 56px; height: 56px; border-radius: 50%; border: 0; background: rgba(255,255,255,.2); color: #fff; font-size: 22px; }
+  #rec { width: 74px; height: 74px; border-radius: 50%; border: 4px solid #fff; background: none; padding: 0; display: grid; place-items: center; }
+  #rec i { width: 60px; height: 60px; border-radius: 30px; background: #ff3b30; transition: all .2s; }
+  #rec.on i { width: 28px; height: 28px; border-radius: 6px; }
+
+  #edit, #save { position: fixed; inset: 0; z-index: 5; background: #111; display: none; flex-direction: column;
+    padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); gap: 12px; }
+  #edit.show, #save.show { display: flex; }
+  #edit textarea { flex: 1; width: 100%; background: #1c1c1e; color: #fff; border: 0; border-radius: 12px; padding: 12px;
+    font: 20px/1.4 -apple-system, system-ui, sans-serif; -webkit-user-select: text; user-select: text; resize: none; }
+  .top { display: flex; justify-content: space-between; }
+  .link { background: none; border: 0; color: #0a84ff; font-size: 17px; padding: 8px 0; }
+  #save { background: rgba(0,0,0,.85); justify-content: center; align-items: center; text-align: center; }
+  .big { background: #0a84ff; color: #fff; border: 0; border-radius: 14px; font-size: 18px; padding: 16px 28px; }
+  #msg { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 6; background: rgba(0,0,0,.8);
+    padding: 12px 18px; border-radius: 20px; display: none; text-align: center; }
+</style>
+</head>
+<body>
+<video id="cam" autoplay playsinline muted></video>
+
+<div id="box"><div id="text"></div><div id="size">⤡</div></div>
+
+<div id="bar">
+  <label class="row"><span>Скорость</span><input id="speed" type="range" min="10" max="150"></label>
+  <label class="row"><span>Шрифт</span><input id="font" type="range" min="16" max="60"></label>
+  <div class="btns">
+    <button class="round" id="play">▶</button>
+    <button id="rec"><i></i></button>
+    <button class="round" id="editBtn">✎</button>
+  </div>
+</div>
+
+<div id="edit">
+  <div class="top">
+    <button class="link" id="paste">Вставить</button>
+    <button class="link" id="done"><b>Готово</b></button>
+  </div>
+  <textarea id="area" placeholder="Текст для суфлёра"></textarea>
+</div>
+
+<div id="save">
+  <div>
+    <p>Запись готова</p>
+    <button class="big" id="saveBtn">Сохранить видео</button>
+    <p><button class="link" id="skip">Не сохранять</button></p>
+  </div>
+</div>
+
+<div id="msg"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const box = $('box'), txt = $('text');
+
+// Настройки живут в телефоне (localStorage), на сервер ничего не уходит.
+const store = (() => { try { return JSON.parse(localStorage.getItem('suflyor')) || {}; } catch { return {}; } })();
+const s = Object.assign({
+  text: 'Вставь сюда свой текст: кнопка ✎ внизу справа.\n\nТап по окошку — старт и пауза. Двойной тап — в начало. Тяни окошко куда угодно, хоть под чёлку. Уголок справа внизу меняет размер.',
+  speed: 40, font: 30, x: 30, y: 60, w: 340, h: 220
+}, store);
+const save = () => { try { localStorage.setItem('suflyor', JSON.stringify(s)); } catch {} };
+
+function render() {
+  txt.textContent = s.text;
+  txt.style.fontSize = s.font + 'px';
+  Object.assign(box.style, { left: s.x + 'px', top: s.y + 'px', width: s.w + 'px', height: s.h + 'px' });
+  $('speed').value = s.speed; $('font').value = s.font;
+}
+render();
+
+function msg(t) { const m = $('msg'); m.textContent = t; m.style.display = 'block'; clearTimeout(msg.t); msg.t = setTimeout(() => m.style.display = 'none', 2500); }
+
+// --- прокрутка ---
+let playing = false, scroll = 0, last = 0;
+function frame(now) {
+  if (playing) {
+    scroll += s.speed * (now - last) / 1000;
+    if (scroll > txt.offsetHeight) setPlaying(false);
+  }
+  last = now;
+  txt.style.transform = `translateY(${s.h * 0.25 - scroll}px)`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+function setPlaying(p) {
+  if (p && scroll >= txt.offsetHeight) scroll = 0;
+  playing = p; $('play').textContent = p ? '❚❚' : '▶';
+}
+$('play').onclick = () => setPlaying(!playing);
+$('speed').oninput = e => { s.speed = +e.target.value; save(); };
+$('font').oninput = e => { s.font = +e.target.value; render(); save(); };
+
+// --- окошко: тянуть, менять размер, тап/двойной тап ---
+function drag(el, onMove, onTap) {
+  el.addEventListener('pointerdown', e => {
+    e.stopPropagation(); el.setPointerCapture(e.pointerId);
+    const sx = e.clientX, sy = e.clientY, start = { ...s }; let moved = false;
+    el.onpointermove = e => {
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
+      if (moved) { onMove(start, dx, dy); render(); }
+    };
+    el.onpointerup = el.onpointercancel = () => { el.onpointermove = el.onpointerup = null; save(); if (!moved && onTap) onTap(); };
+  });
+}
+let lastTap = 0;
+drag(box, (st, dx, dy) => {
+  // по всему экрану, но хоть кусок окна (60px) всегда остаётся видно
+  s.x = Math.min(Math.max(st.x + dx, 60 - st.w), innerWidth - 60);
+  s.y = Math.min(Math.max(st.y + dy, 60 - st.h), innerHeight - 60);
+}, () => {
+  const now = Date.now();
+  if (now - lastTap < 300) { scroll = 0; setPlaying(false); } else setPlaying(!playing);
+  lastTap = now;
+});
+drag($('size'), (st, dx, dy) => { s.w = Math.max(120, st.w + dx); s.h = Math.max(80, st.h + dy); });
+
+// --- текст ---
+$('editBtn').onclick = () => { setPlaying(false); $('area').value = s.text; $('edit').classList.add('show'); };
+$('paste').onclick = async () => { try { $('area').value = await navigator.clipboard.readText(); } catch { msg('Вставь долгим нажатием в поле'); } };
+$('done').onclick = () => { s.text = $('area').value; scroll = 0; save(); render(); $('edit').classList.remove('show'); };
+
+// --- камера и запись ---
+let stream, rec, chunks = [], file;
+async function startCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: true
+    });
+    $('cam').srcObject = stream;
+  } catch (e) { msg('Нет доступа к камере. Разреши в настройках Safari и перезапусти.'); }
+}
+startCam();
+
+$('rec').onclick = () => {
+  if (rec && rec.state === 'recording') return rec.stop();
+  if (!stream) return msg('Камера не включена');
+  const type = ['video/mp4', 'video/webm'].find(t => MediaRecorder.isTypeSupported(t));
+  rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 10_000_000 });
+  chunks = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.onstop = () => {
+    $('rec').classList.remove('on');
+    const ext = type.includes('mp4') ? 'mp4' : 'webm';
+    file = new File([new Blob(chunks, { type })], `suflyor-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.${ext}`, { type });
+    $('save').classList.add('show');
+  };
+  rec.start(1000);
+  $('rec').classList.add('on');
+};
+
+// Сохранение — через системное «Поделиться» → «Сохранить видео».
+$('saveBtn').onclick = async () => {
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
+    else { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; a.click(); }
+    $('save').classList.remove('show');
+  } catch (e) { if (e.name !== 'AbortError') msg('Не получилось сохранить: ' + e.message); }
+};
+$('skip').onclick = () => { if (confirm('Удалить эту запись?')) { file = null; $('save').classList.remove('show'); } };
+
+// не гасить экран, пока открыт суфлёр
+async function wake() { try { await navigator.wakeLock.request('screen'); } catch {} }
+wake(); document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && wake());
+</script>
+</body>
+</html>
