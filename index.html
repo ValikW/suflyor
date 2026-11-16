@@ -192,6 +192,21 @@ $('saveBtn').onclick = async () => {
 };
 $('skip').onclick = () => { if (confirm('Удалить эту запись?')) { file = null; $('save').classList.remove('show'); } };
 
+// Safari не слушает user-scalable=no: глушим щипок и двойной тап, иначе страница зумится и «залипает»
+document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+let lastTouch = 0;
+document.addEventListener('touchend', e => {
+  if (e.target.closest('textarea')) return;
+  const now = Date.now();
+  if (now - lastTouch < 350) e.preventDefault();
+  lastTouch = now;
+}, { passive: false });
+
+// В обычном Safari низ экрана закрывает его панель с адресом — поднимаем кнопки над ней.
+// ponytail: подбор на глаз; с иконки на экране «Домой» панели нет, там отступ не нужен.
+if (!navigator.standalone && !matchMedia('(display-mode: standalone)').matches) $('bar').style.paddingBottom = '110px';
+
 // не гасить экран, пока открыт суфлёр
 async function wake() { try { await navigator.wakeLock.request('screen'); } catch {} }
 wake(); document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && wake());
